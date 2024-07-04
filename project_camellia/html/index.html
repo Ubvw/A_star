@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Routing</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
+        integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
+        crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"
+        integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
+        crossorigin=""></script>
+     <script src="https://unpkg.com/leaflet-canvas-markers/dist/leaflet.canvas-markers.min.js"></script>
+
+     <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0; /* Adjust background color as needed */
+        }
+        #mapid {
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+        .map-button {
+            position: absolute;
+            z-index: 1000;
+            padding: 10px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        .map-button:hover {
+            background-color: #2980b9;
+        }
+        #locationButton {
+            top: 20px;
+            right: 20px;
+        }
+        #removeNodeButton {
+            top: 70px;
+            right: 20px;
+        }
+        .info-panel {
+            position: absolute;
+            z-index: 1000;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 250px;
+        }
+        #data {
+            bottom: 20px;
+            left: 20px;
+        }
+        #hdata {
+            bottom: 20px;
+            right: 20px;
+        }
+        #destinationTypeSelect {
+            position: absolute;
+            top: 150px;
+            right: 20px; /* Adjust as per your requirement */
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            background-color: #f1c40f;
+            color: #333;
+            font-size: 14px;
+            z-index: 1000;
+        }
+        .toggle-button {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.3s;
+        }
+        .toggle-button:hover {
+            background-color: #27ae60;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapid"></div>
+
+    <button id="locationButton" class="map-button">Use My Location</button>
+    <button id="removeNodeButton" class="map-button">Remove Node</button>
+
+    <select id="destinationTypeSelect">
+        <option value="hospital">Hospital</option>
+        <option value="police">Police Station</option>
+        <option value="fire_station">Fire Station</option>
+    </select>
+
+    <div id="data" class="info-panel">
+        <div id="nodes"></div>
+        <button id="toggle-nodes" class="toggle-button">Toggle Nodes</button>
+    </div>
+
+    <div id="hdata" class="info-panel">
+        <div id="hnodes"></div>
+        <button id="toggle-hospital-nodes" class="toggle-button">Toggle Emergency Services</button>
+    </div>
+
+    <script>
+    let nodesData = null;
+    let addressData = null;
+    let userLocationMarker = null;
+    let removeNodeMode = false;
+    let currentStartNode = null;
+    let currentEndNode = null;
+    let nodeMarkers = {};
+    let destinationType = "hospital";
+
+    const mymap = L.map('mapid').setView([14.6233, 121.1304], 12);
+
+    const line = L.polyline([], { color: 'green' }).addTo(mymap);
+    const marker = L.marker([0, 0]).addTo(mymap);
+
+    mymap.setMaxBounds([
+        [14.3732, 120.9056],
+        [14.8734, 121.3551]
+    ]);
+
+    L.tileLayer('https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}@2x.png', {
+        attribution: '',
+        maxZoom: 19,
+        subdomains: "abc"
+    }).addTo(mymap);
+
+    document.getElementById('locationButton').addEventListener('click', getUserLocation);
+    document.getElementById('removeNodeButton').addEventListener('click', toggleRemoveNodeMode);
+    document.getElementById('destinationTypeSelect').addEventListener('change', (e) => {
+        destinationType = e.target.value;
+        if (currentStartNode) {
+            handleMapClick(currentStartNode.lat, currentStartNode.lon);
+        }
+    });
+
+    function toggleRemoveNodeMode() {
+        removeNodeMode = !removeNodeMode;
+        document.getElementById('mapid').classList.toggle('remove-node-cursor', removeNodeMode);
+        document.getElementById('removeNodeButton').style.backgroundColor = removeNodeMode ? '#ffcccc' : 'white';
+    }
+
+    mymap.on('click', (e) => {
+        if (removeNodeMode) {
+            removeNearestNode(e.latlng.lat, e.latlng.lng);
+        } else {
+            handleMapClick(e.latlng.lat, e.latlng.lng);
+        }
+    });
+
+    function handleMapClick(lat, lng) {
+        if (!nodesData || !addressData) {
+            console.error('Data not loaded yet');
+            return;
+        }
+
+        let nn = nearestNeighbour(lat, lng);
+        let nearestService = nearestEmergencyService(nn.lat, nn.lng, destinationType);
+
+        if (nearestService.distance <= 30000) {
+            marker.setLatLng([nn.lat, nn.lng]);
+            marker.bindPopup(`
+                <div style="font-family: Arial, sans-serif; color: #333;">
+                    <h3 style="margin: 0; padding: 0; font-weight: bold;">Nearest Emergency Service</h3>
+                    <p style="margin: 0; padding: 0;">${nearestService.name}</p>
+                    <p style="margin: 0; padding: 0;">Distance: ${nearestService.distance.toFixed(2)} meters</p>
+                </div>
+            `).openPopup();
+
+            currentStartNode = getNearestValidNode(nn.lat, nn.lng);
+            currentEndNode = getNearestValidNode(nearestService.lat, nearestService.lon);
+
+            if (currentStartNode && currentEndNode) {
+                findAndDisplayPath();
+            } else {
+                console.error('No valid start or end node found');
+            }
+        } else {
+            console.log('No emergency service within 30km');
+        }
+    }
+
+    function findAndDisplayPath() {
+        if (currentStartNode && currentEndNode) {
+            let path = constructPath(astar(currentStartNode.id, currentEndNode.id));
+            if (path) {
+                line.setLatLngs(path);
+                console.log(`Path found from ${currentStartNode.id} to ${currentEndNode.id}`);
+            } else {
+                console.error('Path could not be constructed');
+            }
+        } else {
+            console.error('Start or end node is not set');
+        }
+    }
+
+    function removeNearestNode(lat, lon) {
+            let nearestNode = nearestNeighbour(lat, lon);
+            if (nearestNode) {
+                if (nearestNode.id === currentStartNode.id || nearestNode.id === currentEndNode.id) {
+                    console.log("Cannot remove start or end node");
+                    return;
+                }
+
+                delete nodesData[nearestNode.id];
+
+                for (let nodeId in nodesData) {
+                    if (nodesData[nodeId].con) {
+                        nodesData[nodeId].con = nodesData[nodeId].con.filter(id => id !== nearestNode.id);
+                    }
+                }
+
+                // Remove the marker from the map
+                if (nodeMarkers[nearestNode.id]) {
+                    mymap.removeLayer(nodeMarkers[nearestNode.id]);
+                    delete nodeMarkers[nearestNode.id];
+                }
+
+                console.log(`Removed node ${nearestNode.id}`);
+
+                findAndDisplayPath();
+            }
+        }
+
+    function getUserLocation() {
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                const userLat = position.coords.latitude;
+                const userLon = position.coords.longitude;
+                
+                // Remove previous user location marker if it exists
+                if (userLocationMarker) {
+                    mymap.removeLayer(userLocationMarker);
+                }
+
+                // Add a marker for the user's location
+                userLocationMarker = L.marker([userLat, userLon]).addTo(mymap);
+                userLocationMarker.bindPopup("Your Location").openPopup();
+
+                // Center the map on the user's location
+                mymap.setView([userLat, userLon], 15);
+
+                // Handle the click event for the user's location
+                handleMapClick(userLat, userLon);
+            }, function(error) {
+                console.error("Error getting user location:", error.message);
+                alert("Unable to get your location. Please ensure you've granted permission and try again.");
+            });
+        } else {
+            alert("Geolocation is not supported by your browser");
+        }
+    }
+
+
+        fetch("mnl.json")
+            .then(response => response.json())
+            .then(data => {
+                nodesData = data.nodes;
+                addressData = data.addresses;
+
+                let l = Object.keys(nodesData).length;
+                document.getElementById('nodes').textContent = `${l} nodes in the map`;
+
+                let a = Object.keys(addressData).length;
+                document.getElementById('hnodes').textContent = `${a} emergency services nodes in the map`;
+
+                let circles = [];
+                for (let key in nodesData) {
+                    if (nodesData.hasOwnProperty(key)) {
+                        circles.push(L.circle([nodesData[key].lat, nodesData[key].lon], { radius: 1 }));
+                    }
+                }
+
+                // marker adder
+                var baseIcon = L.Icon.extend({
+                    options: {
+                        iconSize: [30, 30],
+                        iconAnchor: [10, 10],
+                        popupAnchor: [0, -10]
+                    }
+                });
+
+                /**icons*/
+                var hospitalIcon = new baseIcon({ iconUrl: 'icons/hospital.png' });
+                var firetruckIcon = new baseIcon({ iconUrl: 'icons/fire-truck.png' });
+                var policeIcon = new baseIcon({ iconUrl: 'icons/police.png' });
+
+                let hmarkers = [];
+                for (let key in addressData) {
+                    if (addressData.hasOwnProperty(key)) {
+                        let marker = null;
+                        if (addressData[key].tag == "amenity:hospital" || addressData[key].tag == "building:hospital") {
+                            marker = L.marker([addressData[key].lat, addressData[key].lon], { icon: hospitalIcon });
+                        } else if (addressData[key].tag == "amenity:fire_station") {
+                            marker = L.marker([addressData[key].lat, addressData[key].lon], { icon: firetruckIcon });
+                        } else if (addressData[key].tag == "amenity:police") {
+                            marker = L.marker([addressData[key].lat, addressData[key].lon], { icon: policeIcon });
+                        } else {
+                            marker = L.marker([addressData[key].lat, addressData[key].lon]);
+                        }
+
+                        marker.bindPopup(`<b>${addressData[key].name}</b><br>${addressData[key].address}</br>${addressData[key].tag}`);
+                        hmarkers.push(marker);
+                    }
+                }
+
+                let circlesLayer = L.layerGroup(circles);
+                let hmarkersLayer = L.layerGroup(hmarkers);
+
+                document.getElementById('toggle-nodes').addEventListener('click', () => {
+                    if (mymap.hasLayer(circlesLayer)) {
+                        mymap.removeLayer(circlesLayer);
+                    } else {
+                        mymap.addLayer(circlesLayer);
+                    }
+                });
+
+                document.getElementById('toggle-hospital-nodes').addEventListener('click', () => {
+                    if (mymap.hasLayer(hmarkersLayer)) {
+                        mymap.removeLayer(hmarkersLayer);
+                    } else {
+                        mymap.addLayer(hmarkersLayer);
+                    }
+                });
+            });
+
+        function nearestNeighbour(lat, lon) {
+            let id = "";
+            let gd = 99999999;
+
+            for (let key in nodesData) {
+                let d = distance(lat, lon, nodesData[key].lat, nodesData[key].lon);
+                if (d < gd) {
+                    gd = d;
+                    id = key;
+                }
+            }
+
+            return {
+                id: id,
+                lat: nodesData[id].lat,
+                lng: nodesData[id].lon,
+                name: nodesData[id].name,
+                address: nodesData[id].address
+            };
+        }
+
+        function nearestEmergencyService(lat, lon, type) {
+            let nearest = {
+                id: "",
+                name: "",
+                address: "",
+                lat: 0,
+                lon: 0,
+                distance: Number.MAX_VALUE
+            };
+
+            for (let key in addressData) {
+                if (
+                    (type === "hospital" && (addressData[key].tag === "amenity:hospital" || addressData[key].tag === "building:hospital")) ||
+                    (type === "police" && addressData[key].tag === "amenity:police") ||
+                    (type === "fire_station" && addressData[key].tag === "amenity:fire_station")
+                ) {
+                    let d = distance(lat, lon, addressData[key].lat, addressData[key].lon);
+                    if (d < nearest.distance) {
+                        nearest = {
+                            id: key,
+                            name: addressData[key].name,
+                            address: addressData[key].address,
+                            lat: addressData[key].lat,
+                            lon: addressData[key].lon,
+                            distance: d
+                        };
+                    }
+                }
+            }
+
+            return nearest;
+        }
+
+
+        function getNearestValidNode(lat, lon) {
+            let nearest = null;
+            let minDistance = Infinity;
+
+            for (let key in nodesData) {
+                let d = distance(lat, lon, nodesData[key].lat, nodesData[key].lon);
+                if (d < minDistance) {
+                    minDistance = d;
+                    nearest = {
+                        id: key,
+                        lat: nodesData[key].lat,
+                        lon: nodesData[key].lon
+                    };
+                }
+            }
+
+            return nearest;
+        }
+
+        function astar(startId, goalId) {
+            if (!nodesData[startId] || !nodesData[goalId]) {
+                console.error(`Invalid start or goal node: startId=${startId}, goalId=${goalId}`);
+                return null;
+            }
+
+            let queue = [{
+                id: startId,
+                cost: distance(nodesData[startId].lat, nodesData[startId].lon, nodesData[goalId].lat, nodesData[goalId].lon),
+                path: 0,
+                parent: null,
+                lat: nodesData[startId].lat,
+                lon: nodesData[startId].lon
+            }];
+            let visited = new Set();
+
+            let iterations = 0;
+            let nodes = Object.keys(nodesData).length;
+
+            while (queue.length > 0) {
+                if (++iterations > nodes) {
+                    console.info('No path between the two selected nodes');
+                    return null;
+                }
+
+                let current = queue.shift();
+
+                if (current.id === goalId) {
+                    return current;
+                } else {
+                    visited.add(current.id);
+                    let children = getChildren(current, goalId, nodesData);
+
+                    let changedQueue = false;
+
+                    for (let child of children) {
+                        if (!visited.has(child.id)) {
+                            queue.push(child);
+                            changedQueue = true;
+                        }
+                    }
+
+                    if (queue.length > 0) {
+                        if (!changedQueue && iterations > 50) continue;
+
+                        queue.sort((a, b) => a.cost - b.cost);
+                    } else {
+                        return null;
+                    }
+                }
+            }
+        }
+
+        function constructPath(node) {
+            if (!node) return null;
+
+            let path = [];
+
+            while (node) {
+                path.push([node.lat, node.lon]);
+                node = node.parent;
+            }
+
+            return path.reverse();
+        }
+
+        function getChildren(parent, goalId, data) {
+            let children = [];
+            if (!data[parent.id].con) return children;
+
+            for (let c of data[parent.id].con) {
+                let path = parent.path + distance(parent.lat, parent.lon, data[c].lat, data[c].lon);
+
+                children.push({
+                    id: c,
+                    lat: data[c].lat,
+                    lon: data[c].lon,
+                    parent: parent,
+                    cost: path + distance(data[c].lat, data[c].lon, data[goalId].lat, data[goalId].lon),
+                    path: path
+                });
+            }
+            return children;
+        }
+
+        // haversine formula to consideer the curvature of the earth
+        function distance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // radius of Earth in meters
+            const dLat = toRadians(lat2 - lat1);
+            const dLon = toRadians(lon2 - lon1);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const d = R * c;
+            return d;
+        }
+
+        function toRadians(degrees) {
+            return degrees * Math.PI / 180;
+        }
+    </script>
+</body>
+
+</html>
