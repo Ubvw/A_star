@@ -140,10 +140,9 @@
         [14.8734, 121.3551]
     ]);
 
-    L.tileLayer('https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}@2x.png', {
-        attribution: '',
-        maxZoom: 19,
-        subdomains: "abc"
+    L.tileLayer('http://{s}.google.com/vt?lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains:['mt0','mt1','mt2','mt3']
     }).addTo(mymap);
 
     document.getElementById('locationButton').addEventListener('click', getUserLocation);
@@ -425,53 +424,66 @@
                 return null;
             }
 
-            let queue = [{
+            let openSet = new Map();
+            let closedSet = new Set();
+
+            openSet.set(startId, {
                 id: startId,
-                cost: distance(nodesData[startId].lat, nodesData[startId].lon, nodesData[goalId].lat, nodesData[goalId].lon),
-                path: 0,
+                g: 0,
+                f: distance(nodesData[startId].lat, nodesData[startId].lon, nodesData[goalId].lat, nodesData[goalId].lon),
                 parent: null,
                 lat: nodesData[startId].lat,
                 lon: nodesData[startId].lon
-            }];
-            let visited = new Set();
+            });
 
-            let iterations = 0;
-            let nodes = Object.keys(nodesData).length;
-
-            while (queue.length > 0) {
-                if (++iterations > nodes) {
-                    console.info('No path between the two selected nodes');
-                    return null;
-                }
-
-                let current = queue.shift();
-
+            while (openSet.size > 0) {
+                let current = [...openSet.values()].reduce((min, node) => node.f < min.f ? node : min);
+                
                 if (current.id === goalId) {
                     return current;
-                } else {
-                    visited.add(current.id);
-                    let children = getChildren(current, goalId, nodesData);
+                }
 
-                    let changedQueue = false;
+                openSet.delete(current.id);
+                closedSet.add(current.id);
 
-                    for (let child of children) {
-                        if (!visited.has(child.id)) {
-                            queue.push(child);
-                            changedQueue = true;
-                        }
+                let neighbors = getNeighbors(current, goalId);
+
+                for (let neighbor of neighbors) {
+                    if (closedSet.has(neighbor.id)) continue;
+
+                    let tentativeG = current.g + distance(current.lat, current.lon, neighbor.lat, neighbor.lon);
+
+                    if (!openSet.has(neighbor.id)) {
+                        openSet.set(neighbor.id, neighbor);
+                    } else if (tentativeG >= openSet.get(neighbor.id).g) {
+                        continue;
                     }
 
-                    if (queue.length > 0) {
-                        if (!changedQueue && iterations > 50) continue;
-
-                        queue.sort((a, b) => a.cost - b.cost);
-                    } else {
-                        return null;
-                    }
+                    neighbor.parent = current;
+                    neighbor.g = tentativeG;
+                    neighbor.f = neighbor.g + distance(neighbor.lat, neighbor.lon, nodesData[goalId].lat, nodesData[goalId].lon);
                 }
             }
+
+            return null; // No path found
         }
 
+        function getNeighbors(node, goalId) {
+            let neighbors = [];
+            if (!nodesData[node.id].con) return neighbors;
+
+            for (let c of nodesData[node.id].con) {
+                neighbors.push({
+                    id: c,
+                    lat: nodesData[c].lat,
+                    lon: nodesData[c].lon,
+                    g: Infinity,
+                    f: Infinity
+                });
+            }
+            return neighbors;
+        }
+        
         function constructPath(node) {
             if (!node) return null;
 
