@@ -7,28 +7,33 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Routing</title>
 
+    <link rel="icon" href="./icons/icon.png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
         integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
         crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"
         integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
         crossorigin=""></script>
-     <script src="https://unpkg.com/leaflet-canvas-markers/dist/leaflet.canvas-markers.min.js"></script>
+    <script src="https://unpkg.com/leaflet-canvas-markers/dist/leaflet.canvas-markers.min.js"></script>
 
-     <style>
-        body, html {
+    <style>
+        body,
+        html {
             margin: 0;
             padding: 0;
             height: 100%;
             width: 100%;
             font-family: Arial, sans-serif;
-            background-color: #f0f0f0; /* Adjust background color as needed */
+            background-color: #f0f0f0;
+            /* Adjust background color as needed */
         }
+
         #mapid {
             height: 100vh;
             width: 100vw;
             position: relative;
         }
+
         .map-button {
             position: absolute;
             z-index: 1000;
@@ -41,17 +46,21 @@
             font-size: 14px;
             transition: background-color 0.3s;
         }
+
         .map-button:hover {
             background-color: #2980b9;
         }
+
         #locationButton {
             top: 20px;
             right: 20px;
         }
+
         #removeNodeButton {
             top: 70px;
             right: 20px;
         }
+
         .info-panel {
             position: absolute;
             z-index: 1000;
@@ -61,18 +70,22 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             max-width: 250px;
         }
+
         #data {
             bottom: 20px;
             left: 20px;
         }
+
         #hdata {
             bottom: 20px;
             right: 20px;
         }
+
         #destinationTypeSelect {
             position: absolute;
             top: 150px;
-            right: 20px; /* Adjust as per your requirement */
+            right: 20px;
+            /* Adjust as per your requirement */
             padding: 10px;
             border: none;
             border-radius: 4px;
@@ -81,6 +94,7 @@
             font-size: 14px;
             z-index: 1000;
         }
+
         .toggle-button {
             margin-top: 10px;
             padding: 8px 12px;
@@ -92,6 +106,7 @@
             font-size: 12px;
             transition: background-color 0.3s;
         }
+
         .toggle-button:hover {
             background-color: #27ae60;
         }
@@ -121,65 +136,84 @@
     </div>
 
     <script>
-    let nodesData = null;
-    let addressData = null;
-    let userLocationMarker = null;
-    let removeNodeMode = false;
-    let currentStartNode = null;
-    let currentEndNode = null;
-    let nodeMarkers = {};
-    let destinationType = "hospital";
+        let nodesData = null;
+        let addressData = null;
+        let userLocationMarker = null;
+        let removeNodeMode = false;
+        let currentStartNode = null;
+        let currentEndNode = null;
+        let nodeMarkers = {};
+        let destinationType = "hospital";
 
-    const mymap = L.map('mapid').setView([14.6233, 121.1304], 12);
+        const mymap = L.map('mapid').setView([14.6233, 121.1304], 12);
 
-    const line = L.polyline([], { color: 'green' }).addTo(mymap);
-    const marker = L.marker([0, 0]).addTo(mymap);
+        const line = L.polyline([], { color: 'green' }).addTo(mymap);
+        const marker = L.marker([0, 0]).addTo(mymap);
 
-    mymap.setMaxBounds([
-        [14.3732, 120.9056],
-        [14.8734, 121.3551]
-    ]);
+        mymap.setMaxBounds([
+            [14.3732, 120.9056],
+            [14.8734, 121.3551]
+        ]);
+        
+        /*maps layer**/
+        var googleMaps = L.tileLayer('http://{s}.google.com/vt?lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        });
 
-    L.tileLayer('http://{s}.google.com/vt?lyrs=m&x={x}&y={y}&z={z}', {
-        maxZoom: 20,
-        subdomains:['mt0','mt1','mt2','mt3']
-    }).addTo(mymap);
+        var openStreetMap = L.tileLayer('https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}@2x.png', {
+            maxZoom: 19
+        });
 
-    document.getElementById('locationButton').addEventListener('click', getUserLocation);
-    document.getElementById('removeNodeButton').addEventListener('click', toggleRemoveNodeMode);
-    document.getElementById('destinationTypeSelect').addEventListener('change', (e) => {
-        destinationType = e.target.value;
-        if (currentStartNode) {
-            handleMapClick(currentStartNode.lat, currentStartNode.lon);
+        var darkMap = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}@2x.png', {
+            maxZoom: 19,
+        });
+
+        var baseLayers = {
+            "Google Maps": googleMaps,
+            "OpenStreetMap": openStreetMap,
+            "Dark Mode": darkMap
+        };
+
+        var layerControl = L.control.layers(null, baseLayers, {position: 'topleft'}).addTo(mymap);
+        googleMaps.addTo(mymap);
+        /***/
+
+        document.getElementById('locationButton').addEventListener('click', getUserLocation);
+        document.getElementById('removeNodeButton').addEventListener('click', toggleRemoveNodeMode);
+        document.getElementById('destinationTypeSelect').addEventListener('change', (e) => {
+            destinationType = e.target.value;
+            if (currentStartNode) {
+                handleMapClick(currentStartNode.lat, currentStartNode.lon);
+            }
+        });
+
+        function toggleRemoveNodeMode() {
+            removeNodeMode = !removeNodeMode;
+            document.getElementById('mapid').classList.toggle('remove-node-cursor', removeNodeMode);
+            document.getElementById('removeNodeButton').style.backgroundColor = removeNodeMode ? '#ffcccc' : 'white';
         }
-    });
 
-    function toggleRemoveNodeMode() {
-        removeNodeMode = !removeNodeMode;
-        document.getElementById('mapid').classList.toggle('remove-node-cursor', removeNodeMode);
-        document.getElementById('removeNodeButton').style.backgroundColor = removeNodeMode ? '#ffcccc' : 'white';
-    }
+        mymap.on('click', (e) => {
+            if (removeNodeMode) {
+                removeNearestNode(e.latlng.lat, e.latlng.lng);
+            } else {
+                handleMapClick(e.latlng.lat, e.latlng.lng);
+            }
+        });
 
-    mymap.on('click', (e) => {
-        if (removeNodeMode) {
-            removeNearestNode(e.latlng.lat, e.latlng.lng);
-        } else {
-            handleMapClick(e.latlng.lat, e.latlng.lng);
-        }
-    });
+        function handleMapClick(lat, lng) {
+            if (!nodesData || !addressData) {
+                console.error('Data not loaded yet');
+                return;
+            }
 
-    function handleMapClick(lat, lng) {
-        if (!nodesData || !addressData) {
-            console.error('Data not loaded yet');
-            return;
-        }
+            let nn = nearestNeighbour(lat, lng);
+            let nearestService = nearestEmergencyService(nn.lat, nn.lng, destinationType);
 
-        let nn = nearestNeighbour(lat, lng);
-        let nearestService = nearestEmergencyService(nn.lat, nn.lng, destinationType);
-
-        if (nearestService.distance <= 30000) {
-            marker.setLatLng([nn.lat, nn.lng]);
-            marker.bindPopup(`
+            if (nearestService.distance <= 30000) {
+                marker.setLatLng([nn.lat, nn.lng]);
+                marker.bindPopup(`
                 <div style="font-family: Arial, sans-serif; color: #333;">
                     <h3 style="margin: 0; padding: 0; font-weight: bold;">Nearest Emergency Service</h3>
                     <p style="margin: 0; padding: 0;">${nearestService.name}</p>
@@ -187,34 +221,34 @@
                 </div>
             `).openPopup();
 
-            currentStartNode = getNearestValidNode(nn.lat, nn.lng);
-            currentEndNode = getNearestValidNode(nearestService.lat, nearestService.lon);
+                currentStartNode = getNearestValidNode(nn.lat, nn.lng);
+                currentEndNode = getNearestValidNode(nearestService.lat, nearestService.lon);
 
+                if (currentStartNode && currentEndNode) {
+                    findAndDisplayPath();
+                } else {
+                    console.error('No valid start or end node found');
+                }
+            } else {
+                console.log('No emergency service within 30km');
+            }
+        }
+
+        function findAndDisplayPath() {
             if (currentStartNode && currentEndNode) {
-                findAndDisplayPath();
+                let path = constructPath(astar(currentStartNode.id, currentEndNode.id));
+                if (path) {
+                    line.setLatLngs(path);
+                    console.log(`Path found from ${currentStartNode.id} to ${currentEndNode.id}`);
+                } else {
+                    console.error('Path could not be constructed');
+                }
             } else {
-                console.error('No valid start or end node found');
+                console.error('Start or end node is not set');
             }
-        } else {
-            console.log('No emergency service within 30km');
         }
-    }
 
-    function findAndDisplayPath() {
-        if (currentStartNode && currentEndNode) {
-            let path = constructPath(astar(currentStartNode.id, currentEndNode.id));
-            if (path) {
-                line.setLatLngs(path);
-                console.log(`Path found from ${currentStartNode.id} to ${currentEndNode.id}`);
-            } else {
-                console.error('Path could not be constructed');
-            }
-        } else {
-            console.error('Start or end node is not set');
-        }
-    }
-
-    function removeNearestNode(lat, lon) {
+        function removeNearestNode(lat, lon) {
             let nearestNode = nearestNeighbour(lat, lon);
             if (nearestNode) {
                 if (nearestNode.id === currentStartNode.id || nearestNode.id === currentEndNode.id) {
@@ -242,37 +276,37 @@
             }
         }
 
-    function getUserLocation() {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(function(position) {
-                const userLat = position.coords.latitude;
-                const userLon = position.coords.longitude;
-                
-                // Remove previous user location marker if it exists
-                if (userLocationMarker) {
-                    mymap.removeLayer(userLocationMarker);
-                }
+        function getUserLocation() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    const userLat = position.coords.latitude;
+                    const userLon = position.coords.longitude;
 
-                // Add a marker for the user's location
-                userLocationMarker = L.marker([userLat, userLon]).addTo(mymap);
-                userLocationMarker.bindPopup("Your Location").openPopup();
+                    // Remove previous user location marker if it exists
+                    if (userLocationMarker) {
+                        mymap.removeLayer(userLocationMarker);
+                    }
 
-                // Center the map on the user's location
-                mymap.setView([userLat, userLon], 15);
+                    // Add a marker for the user's location
+                    userLocationMarker = L.marker([userLat, userLon]).addTo(mymap);
+                    userLocationMarker.bindPopup("Your Location").openPopup();
 
-                // Handle the click event for the user's location
-                handleMapClick(userLat, userLon);
-            }, function(error) {
-                console.error("Error getting user location:", error.message);
-                alert("Unable to get your location. Please ensure you've granted permission and try again.");
-            });
-        } else {
-            alert("Geolocation is not supported by your browser");
+                    // Center the map on the user's location
+                    mymap.setView([userLat, userLon], 15);
+
+                    // Handle the click event for the user's location
+                    handleMapClick(userLat, userLon);
+                }, function (error) {
+                    console.error("Error getting user location:", error.message);
+                    alert("Unable to get your location. Please ensure you've granted permission and try again.");
+                });
+            } else {
+                alert("Geolocation is not supported by your browser");
+            }
         }
-    }
 
 
-        fetch("mnl.json")
+        fetch("mnl3.json")
             .then(response => response.json())
             .then(data => {
                 nodesData = data.nodes;
@@ -309,18 +343,29 @@
                 for (let key in addressData) {
                     if (addressData.hasOwnProperty(key)) {
                         let marker = null;
+                        let contactInfo = "";
+
+                        for (let contactKey in addressData[key]) {
+                            if (addressData[key].hasOwnProperty(contactKey) && contactKey.startsWith("contact:")) {
+                                let contactType = contactKey.split(":")[1];
+                                contactInfo += `<p style="margin: 0; padding: 0;">${contactType.charAt(0).toUpperCase() + contactType.slice(1)}: ${addressData[key][contactKey]}</p>`;
+                            }
+                        }
                         if (addressData[key].tag == "amenity:hospital" || addressData[key].tag == "building:hospital") {
                             marker = L.marker([addressData[key].lat, addressData[key].lon], { icon: hospitalIcon });
+                            marker.bindPopup(`<b>${addressData[key].name}</b><br>${addressData[key].address}<br>${contactInfo}</br>${addressData[key].tag}`);
+                            hmarkers.push(marker);
                         } else if (addressData[key].tag == "amenity:fire_station") {
                             marker = L.marker([addressData[key].lat, addressData[key].lon], { icon: firetruckIcon });
+                            marker.bindPopup(`<b>${addressData[key].name}</b><br>${addressData[key].address}<br>${contactInfo}</br>${addressData[key].tag}`);
+                            hmarkers.push(marker);
                         } else if (addressData[key].tag == "amenity:police") {
                             marker = L.marker([addressData[key].lat, addressData[key].lon], { icon: policeIcon });
+                            marker.bindPopup(`<b>${addressData[key].name}</b><br>${addressData[key].address}<br>${contactInfo}</br>${addressData[key].tag}`);
+                            hmarkers.push(marker);
                         } else {
                             marker = L.marker([addressData[key].lat, addressData[key].lon]);
                         }
-
-                        marker.bindPopup(`<b>${addressData[key].name}</b><br>${addressData[key].address}</br>${addressData[key].tag}`);
-                        hmarkers.push(marker);
                     }
                 }
 
@@ -438,7 +483,7 @@
 
             while (openSet.size > 0) {
                 let current = [...openSet.values()].reduce((min, node) => node.f < min.f ? node : min);
-                
+
                 if (current.id === goalId) {
                     return current;
                 }
@@ -483,7 +528,7 @@
             }
             return neighbors;
         }
-        
+
         function constructPath(node) {
             if (!node) return null;
 
