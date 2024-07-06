@@ -147,7 +147,7 @@
 
         const mymap = L.map('mapid').setView([14.6233, 121.1304], 12);
 
-        const line = L.polyline([], { color: 'green' }).addTo(mymap);
+        const line = L.polyline([], { color: 'green', weight : 8}).addTo(mymap);
         const marker = L.marker([0, 0]).addTo(mymap);
 
         mymap.setMaxBounds([
