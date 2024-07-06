@@ -175,7 +175,7 @@
             "Dark Mode": darkMap
         };
 
-        var layerControl = L.control.layers(null, baseLayers, {position: 'topleft'}).addTo(mymap);
+        var layerControl = L.control.layers(baseLayers, null, {position: 'topleft'}).addTo(mymap);
         googleMaps.addTo(mymap);
         /***/
 
