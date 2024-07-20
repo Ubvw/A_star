@@ -14,11 +14,8 @@ Library for parsing the OSM file into json which is default save as `mnl.json`,
 
  #### How to run?
  ```
- # install first the dependencies
- npm i or npm install
-
- # run the osm-parser, default saved inside the html
-node index.js
+1. Clone the repository
+2. Run the index.html with live server
 
 ```
 
